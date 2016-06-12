@@ -1015,3 +1015,32 @@ macro(CheckRPI)
     endif(SDL_VIDEO AND HAVE_VIDEO_RPI)
   endif(VIDEO_RPI)
 endmacro(CheckRPI)
+
+# Requires:
+# - EGL
+# - PkgCheckModules
+# Optional:
+# - n/a
+macro(CheckKMSDRM)
+  if(VIDEO_KMSDRM)
+    pkg_check_modules(KMSDRM libdrm gbm egl)
+    if(KMSDRM_FOUND)
+      link_directories(
+          ${KMSDRM_LIBRARY_DIRS}
+      )
+      include_directories(
+          ${KMSDRM_INCLUDE_DIRS}
+      )
+      set(HAVE_VIDEO_KMSDRM TRUE)
+      set(HAVE_SDL_VIDEO TRUE)
+
+      file(GLOB KMSDRM_SOURCES ${SDL2_SOURCE_DIR}/src/video/kmsdrm/*.c)
+      set(SOURCE_FILES ${SOURCE_FILES} ${KMSDRM_SOURCES})
+
+      list(APPEND EXTRA_LDFLAGS ${KMSDRM_LDFLAGS})
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${KMSDRM_CFLAGS}")
+
+      set(SDL_VIDEO_DRIVER_KMSDRM 1)
+    endif()
+  endif()
+endmacro()

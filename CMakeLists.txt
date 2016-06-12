@@ -306,6 +306,7 @@ set_option(VIDEO_COCOA         "Use Cocoa video driver" ${APPLE})
 set_option(DIRECTX             "Use DirectX for Windows audio/video" ${WINDOWS})
 set_option(RENDER_D3D          "Enable the Direct3D render driver" ${WINDOWS})
 set_option(VIDEO_VIVANTE       "Use Vivante EGL video driver" ${UNIX_SYS})
+set_option(VIDEO_KMSDRM        "Use KMS DRM video driver" ${UNIX_SYS})
 
 # TODO: We should (should we?) respect cmake's ${BUILD_SHARED_LIBS} flag here
 # The options below are for compatibility to configure's default behaviour.
@@ -848,6 +849,7 @@ elseif(UNIX AND NOT APPLE)
     CheckOpenGLESX11()
     CheckWayland()
     CheckVivante()
+    CheckKMSDRM()
   endif()
 
   if(LINUX)
