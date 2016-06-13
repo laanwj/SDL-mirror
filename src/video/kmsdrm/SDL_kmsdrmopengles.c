@@ -62,29 +62,11 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
 
     /* Do we still need to wait for a flip? */
     int timeout = 0;
-    while (wdata->waiting_for_flip) {
-        if(_this->egl_data->egl_swapinterval > 0) {
-            timeout = -1;
-        }
-        vdata->drm_pollfds.revents = 0;
-        if (poll(&vdata->drm_pollfds, 1, timeout) < 0) {
-            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "DRM poll error");
-            return;
-        }
-
-        if (vdata->drm_pollfds.revents & (POLLHUP | POLLERR)) {
-            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "DRM poll hup or error");
-            return;
-        }
-
-        if (vdata->drm_pollfds.revents & POLLIN) {
-            /* Page flip? If so, drmHandleEvent will unset wdata->waiting_for_flip */
-            drmHandleEvent(vdata->drm_fd, &vdata->drm_evctx);
-        } else {
-            /* Timed out and page flip didn't happen */
-            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Dropping frame while waiting_for_flip");
-            return;
-        }
+    if (_this->egl_data->egl_swapinterval > 0) {
+        timeout = -1;
+    }
+    if (!KMSDRM_WaitPageFlip(_this, wdata, timeout)) {
+        return;
     }
 
     /* Release previously displayed buffer (which is now the backbuffer) and lock a new one */
@@ -111,18 +93,17 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
     if (_this->egl_data->egl_swapinterval == 0) {
         /* Swap buffers instantly, possible tearing */
         SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModeSetCrtc(%d, %u, %u, 0, 0, &%u, 1, &%ux%u@%u)",
-            vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id, displaydata->connector_id,
+            vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id, vdata->saved_conn_id,
             displaydata->cur_mode.hdisplay, displaydata->cur_mode.vdisplay, displaydata->cur_mode.vrefresh);
         ret = drmModeSetCrtc(vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
-            0, 0, &displaydata->connector_id, 1, &displaydata->cur_mode);
+            0, 0, &vdata->saved_conn_id, 1, &displaydata->cur_mode);
         if(ret != 0) {
             SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Could not pageflip with drmModeSetCrtc: %d", ret);
         }
     } else {
         /* Queue page flip at vsync */
-        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModePageFlip(%d, %u, %u, DRM_MODE_PAGE_FLIP_EVENT, %s)",
-            vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
-            wdata->waiting_for_flip ? "true" : "false");
+        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModePageFlip(%d, %u, %u, DRM_MODE_PAGE_FLIP_EVENT, &wdata->waiting_for_flip)",
+            vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id);
         ret = drmModePageFlip(vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
             DRM_MODE_PAGE_FLIP_EVENT, &wdata->waiting_for_flip);
         if (ret == 0) {

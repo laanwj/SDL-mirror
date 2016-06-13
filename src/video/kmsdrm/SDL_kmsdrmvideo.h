@@ -39,13 +39,14 @@ typedef struct SDL_VideoData
     int drm_fd;                 /* DRM file desc */
     struct gbm_device *gbm;
     drmEventContext drm_evctx;  /* DRM event context */
-    struct pollfd drm_pollfds;  /* pollfd set containing DRM file desc */
+    struct pollfd drm_pollfd;   /* pollfd containing DRM file desc */
+    drmModeCrtc *saved_crtc;    /* Saved CRTC to restore on quit */
+    uint32_t saved_conn_id;
 } SDL_VideoData;
 
 
 typedef struct SDL_DisplayData
 {
-    uint32_t connector_id;
     uint32_t encoder_id;
     uint32_t crtc_id;
     drmModeModeInfo cur_mode;
@@ -70,6 +71,7 @@ typedef struct KMSDRM_FBInfo
 
 /* Helper functions */
 KMSDRM_FBInfo *KMSDRM_FBFromBO(_THIS, struct gbm_bo *bo);
+SDL_bool KMSDRM_WaitPageFlip(_THIS, SDL_WindowData *wdata, int timeout);
 
 /****************************************************************************/
 /* SDL_VideoDevice functions declaration                                    */
