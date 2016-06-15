@@ -243,7 +243,6 @@ KMSDRM_VideoInit(_THIS)
     drmModeRes *resources = NULL;
     drmModeConnector *connector = NULL;
     drmModeEncoder *encoder = NULL;
-    drmModeCrtc *crtc = NULL;
     SDL_DisplayMode current_mode;
     SDL_VideoDisplay display;
 
@@ -508,10 +507,10 @@ KMSDRM_DestroyWindow(_THIS, SDL_Window * window)
     SDL_WindowData *data = (SDL_WindowData *) window->driverdata;
     if(data) {
         /* Wait for any pending page flips and unlock buffer */
-        KMSDRM_WaitPageFlip(_this, wdata, -1);
-        if (wdata->locked_bo != NULL) {
-            gbm_surface_release_buffer(wdata->gs, wdata->locked_bo);
-            wdata->locked_bo = NULL;
+        KMSDRM_WaitPageFlip(_this, data, -1);
+        if (data->locked_bo != NULL) {
+            gbm_surface_release_buffer(data->gs, data->locked_bo);
+            data->locked_bo = NULL;
         }
 #if SDL_VIDEO_OPENGL_EGL
         if (data->egl_surface != EGL_NO_SURFACE) {
