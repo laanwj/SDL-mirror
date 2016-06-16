@@ -246,13 +246,13 @@ KMSDRM_VideoInit(_THIS)
     SDL_DisplayMode current_mode;
     SDL_VideoDisplay display;
 
-    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_VideoInit()");
-
     /* Allocate display internal data */
     SDL_DisplayData *data = (SDL_DisplayData *) SDL_calloc(1, sizeof(SDL_DisplayData));
     if (data == NULL) {
         return SDL_OutOfMemory();
     }
+
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_VideoInit()");
 
     /* Open /dev/dri/cardNN */
     devname = (char *) SDL_calloc(1, 16);
