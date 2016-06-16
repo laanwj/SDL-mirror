@@ -149,13 +149,14 @@ VideoBootStrap KMSDRM_bootstrap = {
 static void
 KMSDRM_FBDestroyCallback(struct gbm_bo *bo, void *data)
 {
-   KMSDRM_FBInfo *fb_info = (KMSDRM_FBInfo *)data;
+    KMSDRM_FBInfo *fb_info = (KMSDRM_FBInfo *)data;
 
-   if (fb_info && fb_info->drm_fd > 0 && fb_info->fb_id != 0) {
-      drmModeRmFB(fb_info->drm_fd, fb_info->fb_id);
-   }
+    if (fb_info && fb_info->drm_fd > 0 && fb_info->fb_id != 0) {
+        drmModeRmFB(fb_info->drm_fd, fb_info->fb_id);
+        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Delete DRM FB %u", fb_info->fb_id);
+    }
 
-   free(fb_info);
+    free(fb_info);
 }
 
 KMSDRM_FBInfo *
@@ -180,7 +181,6 @@ KMSDRM_FBFromBO(_THIS, struct gbm_bo *bo)
     h = gbm_bo_get_height(bo);
     stride = gbm_bo_get_stride(bo);
     handle = gbm_bo_get_handle(bo).u32;
-
 
     ret = drmModeAddFB(vdata->drm_fd, w, h, 24, 32, stride, handle, &fb_info->fb_id);
     if (ret < 0) {
@@ -246,6 +246,8 @@ KMSDRM_VideoInit(_THIS)
     SDL_DisplayMode current_mode;
     SDL_VideoDisplay display;
 
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_VideoInit()");
+
     /* Allocate display internal data */
     SDL_DisplayData *data = (SDL_DisplayData *) SDL_calloc(1, sizeof(SDL_DisplayData));
     if (data == NULL) {
@@ -262,6 +264,7 @@ KMSDRM_VideoInit(_THIS)
         ret = SDL_SetError("Could not open /dev/dri/card%d.", vdata->devindex);
         goto cleanup;
     }
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Opened DRM FD (%d)", vdata->drm_fd);
 
     vdata->gbm = gbm_create_device(vdata->drm_fd);
     if (vdata->gbm == NULL) {
@@ -283,7 +286,7 @@ KMSDRM_VideoInit(_THIS)
 
         if (connector->connection == DRM_MODE_CONNECTED &&
             connector->count_modes > 0) {
-            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Found connector %d with %d modes.\n",
+            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Found connector %d with %d modes.",
                          connector->connector_id, connector->count_modes);
             vdata->saved_conn_id = connector->connector_id;
             break;
@@ -304,7 +307,7 @@ KMSDRM_VideoInit(_THIS)
             continue;
 
         if (encoder->encoder_id == connector->encoder_id) {
-            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Found encoder %d.\n", encoder->encoder_id);
+            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Found encoder %d.", encoder->encoder_id);
             data->encoder_id = encoder->encoder_id;
             break;
         }
@@ -322,7 +325,7 @@ KMSDRM_VideoInit(_THIS)
         ret = SDL_SetError("No CRTC found.");
         goto cleanup;
     }
-    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Saved crtc_id %u, fb_id %u, (%u,%u), %ux%u\n",
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Saved crtc_id %u, fb_id %u, (%u,%u), %ux%u",
                  vdata->saved_crtc->crtc_id, vdata->saved_crtc->buffer_id, vdata->saved_crtc->x,
                  vdata->saved_crtc->y, vdata->saved_crtc->width, vdata->saved_crtc->height);
     data->crtc_id = encoder->crtc_id;
@@ -376,13 +379,13 @@ cleanup:
     if (ret != 0) {
         /* Error (complete) cleanup */
         SDL_free(data);
-        if (vdata->gbm != NULL) {
-            gbm_device_destroy(vdata->gbm);
-            vdata->gbm = NULL;
-        }
         if(vdata->saved_crtc != NULL) {
             drmModeFreeCrtc(vdata->saved_crtc);
             vdata->saved_crtc = NULL;
+        }
+        if (vdata->gbm != NULL) {
+            gbm_device_destroy(vdata->gbm);
+            vdata->gbm = NULL;
         }
         if (vdata->drm_fd > 0) {
             close(vdata->drm_fd);
@@ -397,10 +400,8 @@ KMSDRM_VideoQuit(_THIS)
 {
     SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
 
-    if (vdata->gbm != NULL) {
-        gbm_device_destroy(vdata->gbm);
-        vdata->gbm = NULL;
-    }
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_VideoQuit()");
+
     if(vdata->saved_crtc != NULL) {
         if(vdata->drm_fd > 0 && vdata->saved_conn_id > 0) {
             /* Restore saved CRTC settings */
@@ -414,8 +415,13 @@ KMSDRM_VideoQuit(_THIS)
         drmModeFreeCrtc(vdata->saved_crtc);
         vdata->saved_crtc = NULL;
     }
+    if (vdata->gbm != NULL) {
+        gbm_device_destroy(vdata->gbm);
+        vdata->gbm = NULL;
+    }
     if (vdata->drm_fd > 0) {
         close(vdata->drm_fd);
+        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Closed DRM FD %d", vdata->drm_fd);
         vdata->drm_fd = 0;
     }
 #ifdef SDL_INPUT_LINUXEV
@@ -459,7 +465,7 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
     window->h = display->desktop_mode.h;
 
     /* Maybe you didn't ask for a fullscreen OpenGL window, but that's what you get */
-    window->flags |= (SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
+    window->flags |= (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_OPENGL);
 
     wdata->gs = gbm_surface_create(vdata->gbm, window->w, window->h,
         GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
@@ -473,7 +479,7 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
     wdata->egl_surface = SDL_EGL_CreateSurface(_this, (NativeWindowType) wdata->gs);
 
     if (wdata->egl_surface == EGL_NO_SURFACE) {
-        SDL_SetError("Could not create GLES window surface");
+        SDL_SetError("Could not create EGL window surface");
         goto error;
     }
 #endif /* SDL_VIDEO_OPENGL_EGL */
