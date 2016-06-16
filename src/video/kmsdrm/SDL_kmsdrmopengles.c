@@ -43,12 +43,18 @@ int KMSDRM_GLES_SetSwapInterval(_THIS, int interval) {
         return SDL_SetError("EGL not initialized");
     }
 
+    /*
     status = _this->egl_data->eglSwapInterval(_this->egl_data->egl_display, interval);
     if (status != EGL_TRUE) {
         SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "As expected, we couldn't set the swap interval with EGL.");
     }
+    */
+    if (interval == 0 || interval == 1) {
+        _this->egl_data->egl_swapinterval = interval;
+    } else {
+        return SDL_SetError("Only swap intervals of 0 or 1 are supported");
+    }
 
-    _this->egl_data->egl_swapinterval = interval;
     return 0;
 }
 
@@ -62,7 +68,7 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
 
     /* Do we still need to wait for a flip? */
     int timeout = 0;
-    if (_this->egl_data->egl_swapinterval > 0) {
+    if (_this->egl_data->egl_swapinterval = 1) {
         timeout = -1;
     }
     if (!KMSDRM_WaitPageFlip(_this, wdata, timeout)) {
