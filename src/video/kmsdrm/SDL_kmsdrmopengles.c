@@ -78,7 +78,7 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
     /* Release previously displayed buffer (which is now the backbuffer) and lock a new one */
     if (wdata->locked_bo != NULL) {
         gbm_surface_release_buffer(wdata->gs, wdata->locked_bo);
-        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Released GBM surface %p", (void *)wdata->locked_bo);
+        /* SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Released GBM surface %p", (void *)wdata->locked_bo); */
         wdata->locked_bo = NULL;
     }
 
@@ -91,16 +91,16 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
     if (wdata->locked_bo == NULL) {
         SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Could not lock GBM surface front buffer");
         return;
-    } else {
-        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Locked GBM surface %p", (void *)wdata->locked_bo);
+    /* } else {
+        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Locked GBM surface %p", (void *)wdata->locked_bo); */
     }
 
     fb_info = KMSDRM_FBFromBO(_this, wdata->locked_bo);
     if (_this->egl_data->egl_swapinterval == 0) {
         /* Swap buffers instantly, possible tearing */
-        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModeSetCrtc(%d, %u, %u, 0, 0, &%u, 1, &%ux%u@%u)",
+        /* SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModeSetCrtc(%d, %u, %u, 0, 0, &%u, 1, &%ux%u@%u)",
             vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id, vdata->saved_conn_id,
-            displaydata->cur_mode.hdisplay, displaydata->cur_mode.vdisplay, displaydata->cur_mode.vrefresh);
+            displaydata->cur_mode.hdisplay, displaydata->cur_mode.vdisplay, displaydata->cur_mode.vrefresh); */
         ret = drmModeSetCrtc(vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
             0, 0, &vdata->saved_conn_id, 1, &displaydata->cur_mode);
         if(ret != 0) {
@@ -108,8 +108,8 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
         }
     } else {
         /* Queue page flip at vsync */
-        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModePageFlip(%d, %u, %u, DRM_MODE_PAGE_FLIP_EVENT, &wdata->waiting_for_flip)",
-            vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id);
+        /* SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModePageFlip(%d, %u, %u, DRM_MODE_PAGE_FLIP_EVENT, &wdata->waiting_for_flip)",
+            vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id); */
         ret = drmModePageFlip(vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
             DRM_MODE_PAGE_FLIP_EVENT, &wdata->waiting_for_flip);
         if (ret == 0) {
