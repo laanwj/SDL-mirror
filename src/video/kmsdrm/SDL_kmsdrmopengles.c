@@ -68,7 +68,7 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
 
     /* Do we still need to wait for a flip? */
     int timeout = 0;
-    if (_this->egl_data->egl_swapinterval = 1) {
+    if (_this->egl_data->egl_swapinterval == 1) {
         timeout = -1;
     }
     if (!KMSDRM_WaitPageFlip(_this, wdata, timeout)) {
