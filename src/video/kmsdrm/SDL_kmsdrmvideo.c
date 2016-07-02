@@ -66,7 +66,7 @@ static SDL_VideoDevice *
 KMSDRM_Create(int devindex)
 {
     SDL_VideoDevice *device;
-    SDL_VideoData *phdata;
+    SDL_VideoData *vdata;
 
     if (devindex < 0 || devindex > 99) {
         SDL_SetError("devindex (%d) must be between 0 and 99.\n", devindex);
@@ -81,14 +81,15 @@ KMSDRM_Create(int devindex)
     }
 
     /* Initialize internal data */
-    phdata = (SDL_VideoData *) SDL_calloc(1, sizeof(SDL_VideoData));
-    if (phdata == NULL) {
+    vdata = (SDL_VideoData *) SDL_calloc(1, sizeof(SDL_VideoData));
+    if (vdata == NULL) {
         SDL_OutOfMemory();
         goto cleanup;
     }
-    phdata->devindex = devindex;
+    vdata->devindex = devindex;
+    vdata->drm_fd = -1;
 
-    device->driverdata = phdata;
+    device->driverdata = vdata;
 
     /* Setup amount of available displays and current display */
     device->num_displays = 0;
@@ -133,8 +134,8 @@ KMSDRM_Create(int devindex)
 cleanup:
     if (device != NULL)
         SDL_free(device);
-    if (phdata != NULL)
-        SDL_free(phdata);
+    if (vdata != NULL)
+        SDL_free(vdata);
     return NULL;
 }
 
@@ -260,7 +261,7 @@ KMSDRM_VideoInit(_THIS)
     vdata->drm_fd = open(devname, O_RDWR | O_CLOEXEC);
     SDL_free(devname);
 
-    if (vdata->drm_fd < 1) {
+    if (vdata->drm_fd < 0) {
         ret = SDL_SetError("Could not open /dev/dri/card%d.", vdata->devindex);
         goto cleanup;
     }
@@ -387,9 +388,9 @@ cleanup:
             gbm_device_destroy(vdata->gbm);
             vdata->gbm = NULL;
         }
-        if (vdata->drm_fd > 0) {
+        if (vdata->drm_fd >= 0) {
             close(vdata->drm_fd);
-            vdata->drm_fd = 0;
+            vdata->drm_fd = -1;
         }
     }
     return ret;
@@ -409,7 +410,7 @@ KMSDRM_VideoQuit(_THIS)
             if(drmModeSetCrtc(vdata->drm_fd, crtc->crtc_id, crtc->buffer_id,
                               crtc->x, crtc->y, &vdata->saved_conn_id, 1,
                               &crtc->mode) != 0) {
-                SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "Could not restore original CRTC mode\n");
+                SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "Could not restore original CRTC mode");
             }
         }
         drmModeFreeCrtc(vdata->saved_crtc);
@@ -419,10 +420,10 @@ KMSDRM_VideoQuit(_THIS)
         gbm_device_destroy(vdata->gbm);
         vdata->gbm = NULL;
     }
-    if (vdata->drm_fd > 0) {
+    if (vdata->drm_fd >= 0) {
         close(vdata->drm_fd);
         SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Closed DRM FD %d", vdata->drm_fd);
-        vdata->drm_fd = 0;
+        vdata->drm_fd = -1;
     }
 #ifdef SDL_INPUT_LINUXEV
     SDL_EVDEV_Quit();
