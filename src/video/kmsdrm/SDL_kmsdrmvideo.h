@@ -41,7 +41,7 @@ typedef struct SDL_VideoData
     drmEventContext drm_evctx;  /* DRM event context */
     struct pollfd drm_pollfd;   /* pollfd containing DRM file desc */
     drmModeCrtc *saved_crtc;    /* Saved CRTC to restore on quit */
-    uint32_t saved_conn_id;
+    uint32_t saved_conn_id;     /* Saved DRM connector ID */
 } SDL_VideoData;
 
 

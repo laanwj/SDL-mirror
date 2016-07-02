@@ -401,6 +401,10 @@ KMSDRM_VideoQuit(_THIS)
 
     SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_VideoQuit()");
 
+    if (_this->gl_config.driver_loaded) {
+        SDL_GL_UnloadLibrary();
+    }
+
     if(vdata->saved_crtc != NULL) {
         if(vdata->drm_fd > 0 && vdata->saved_conn_id > 0) {
             /* Restore saved CRTC settings */
@@ -518,6 +522,7 @@ KMSDRM_DestroyWindow(_THIS, SDL_Window * window)
             data->locked_bo = NULL;
         }
 #if SDL_VIDEO_OPENGL_EGL
+        SDL_EGL_MakeCurrent(_this, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         if (data->egl_surface != EGL_NO_SURFACE) {
             SDL_EGL_DestroySurface(_this, data->egl_surface);
         }
