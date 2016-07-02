@@ -45,7 +45,7 @@
 #include "SDL_kmsdrmvideo.h"
 #include "SDL_kmsdrmevents_c.h"
 #include "SDL_kmsdrmopengles.h"
-/* #include "SDL_kmsdrmmouse.h" */
+#include "SDL_kmsdrmmouse.h"
 
 static int
 KMSDRM_Available(void)
@@ -365,9 +365,7 @@ KMSDRM_VideoInit(_THIS)
     SDL_EVDEV_Init();
 #endif
 
-    /*
     KMSDRM_InitMouse(_this);
-    */
 
 cleanup:
     if (encoder != NULL)
