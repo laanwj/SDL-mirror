@@ -26,6 +26,7 @@
 
 #include "SDL_kmsdrmvideo.h"
 #include "SDL_kmsdrmopengles.h"
+#include "SDL_kmsdrmdyn.h"
 
 /* EGL implementation of SDL OpenGL support */
 
@@ -77,7 +78,7 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
 
     /* Release previously displayed buffer (which is now the backbuffer) and lock a new one */
     if (wdata->locked_bo != NULL) {
-        gbm_surface_release_buffer(wdata->gs, wdata->locked_bo);
+        KMSDRM_gbm_surface_release_buffer(wdata->gs, wdata->locked_bo);
         /* SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Released GBM surface %p", (void *)wdata->locked_bo); */
         wdata->locked_bo = NULL;
     }
@@ -87,7 +88,7 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
         return;
     }
 
-    wdata->locked_bo = gbm_surface_lock_front_buffer(wdata->gs);
+    wdata->locked_bo = KMSDRM_gbm_surface_lock_front_buffer(wdata->gs);
     if (wdata->locked_bo == NULL) {
         SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Could not lock GBM surface front buffer");
         return;
@@ -101,8 +102,8 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
         /* SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModeSetCrtc(%d, %u, %u, 0, 0, &%u, 1, &%ux%u@%u)",
             vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id, vdata->saved_conn_id,
             displaydata->cur_mode.hdisplay, displaydata->cur_mode.vdisplay, displaydata->cur_mode.vrefresh); */
-        ret = drmModeSetCrtc(vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
-            0, 0, &vdata->saved_conn_id, 1, &displaydata->cur_mode);
+        ret = KMSDRM_drmModeSetCrtc(vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
+                                    0, 0, &vdata->saved_conn_id, 1, &displaydata->cur_mode);
         if(ret != 0) {
             SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Could not pageflip with drmModeSetCrtc: %d", ret);
         }
@@ -110,8 +111,8 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
         /* Queue page flip at vsync */
         /* SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "drmModePageFlip(%d, %u, %u, DRM_MODE_PAGE_FLIP_EVENT, &wdata->waiting_for_flip)",
             vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id); */
-        ret = drmModePageFlip(vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
-            DRM_MODE_PAGE_FLIP_EVENT, &wdata->waiting_for_flip);
+        ret = KMSDRM_drmModePageFlip(vdata->drm_fd, displaydata->crtc_id, fb_info->fb_id,
+                                     DRM_MODE_PAGE_FLIP_EVENT, &wdata->waiting_for_flip);
         if (ret == 0) {
             wdata->waiting_for_flip = SDL_TRUE;
         } else {
@@ -125,4 +126,3 @@ SDL_EGL_MakeCurrent_impl(KMSDRM)
 #endif /* SDL_VIDEO_DRIVER_KMSDRM && SDL_VIDEO_OPENGL_EGL */
 
 /* vi: set ts=4 sw=4 expandtab: */
-
