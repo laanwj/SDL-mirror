@@ -48,14 +48,24 @@
 #include "SDL_kmsdrmmouse.h"
 #include "SDL_kmsdrmdyn.h"
 
+#define KMSDRM_DRI_CARD_0 "/dev/dri/card0"
+
 static int
 KMSDRM_Available(void)
 {
     int available = 0;
 
-    if (SDL_KMSDRM_LoadSymbols()) {
-        available = 1;
-        SDL_KMSDRM_UnloadSymbols();
+    int drm_fd = open(KMSDRM_DRI_CARD_0, O_RDWR | O_CLOEXEC);
+    if (drm_fd >= 0) {
+        if (SDL_KMSDRM_LoadSymbols()) {
+            drmModeRes *resources = KMSDRM_drmModeGetResources(drm_fd);
+            if (resources != NULL) {
+                available = 1;
+                KMSDRM_drmModeFreeResources(resources);
+            }
+            SDL_KMSDRM_UnloadSymbols();
+        }
+        close(drm_fd);
     }
 
     return available;

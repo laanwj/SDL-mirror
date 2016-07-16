@@ -29,7 +29,9 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <gbm.h>
+#if SDL_VIDEO_OPENGL_EGL
 #include <EGL/egl.h>
+#endif
 
 typedef struct SDL_VideoData
 {
