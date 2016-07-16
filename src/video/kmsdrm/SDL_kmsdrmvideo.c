@@ -253,9 +253,93 @@ KMSDRM_FlipHandler(int fd, unsigned int frame, unsigned int sec, unsigned int us
 }
 
 
+static int
+KMSDRM_FindCrtc(_THIS, drmModeRes *res, drmModeConnector *conn, SDL_DisplayData *ddata)
+{
+    uint32_t crtc_id;
+    SDL_DisplayData *iter;
+    unsigned int i, j;
+    SDL_bool crtc_valid;
+    drmModeEncoder *enc = NULL;
+    SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
+
+    /* First try the existing CRTC */
+    if (conn->encoder_id) {
+        enc = KMSDRM_drmModeGetEncoder(vdata->drm_fd, conn->encoder_id);
+    }
+
+    if (enc) {
+        if (enc->crtc_id) {
+            crtc_id = enc->crtc_id;
+            crtc_valid = SDL_TRUE;
+
+            /* Check that this CRTC isn't used already */
+            for (iter = vdata->disp_list; iter; iter = iter->next) {
+                if (iter->crtc_id == crtc_id) {
+                    /* CRTC already in use, can't use it for this display */
+                    crtc_valid = SDL_FALSE;
+                    break;
+                }
+            }
+
+            if (crtc_valid) {
+                KMSDRM_drmModeFreeEncoder(enc);
+                ddata->crtc_id = crtc_id;
+                return 0; /* use existing crtc */
+            }
+        }
+
+        KMSDRM_drmModeFreeEncoder(enc);
+    }
+
+    /*
+     * If not possible to use existing CRTC, try and find another available
+     * encoder and CRTC.
+     */
+     for (i = 0; i < conn->count_encoders; ++i) {
+        enc = KMSDRM_drmModeGetEncoder(vdata->drm_fd, conn->encoders[i]);
+        if (!enc) {
+            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Can't retrieve encoder %u",
+                         conn->encoders[i]);
+            continue;
+        }
+
+        /* Find a CRTC that works with this encoder */
+        for (j = 0; j < res->count_crtcs; ++j) {
+            /* possible_crtcs is a bitfield of CRTC indexes */
+            if (!(enc->possible_crtcs & (1 << j)))
+                continue;
+
+            crtc_id = res->crtcs[j];
+            crtc_valid = SDL_TRUE;
+
+            /* Check CRTC is not already in use */
+            for (iter = vdata->disp_list; iter; iter = iter->next) {
+                if (iter->crtc_id == crtc_id) {
+                    /* CRTC already in use, can't use it for this display */
+                    crtc_valid = SDL_FALSE;
+                    break;
+                }
+            }
+
+            if (crtc_valid) {
+                KMSDRM_drmModeFreeEncoder(enc);
+                ddata->crtc_id = crtc_id;
+                return 0;
+            }
+        }
+
+        KMSDRM_drmModeFreeEncoder(enc);
+    }
+
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Can't find a suitable CRTC for connector %u",
+                 conn->connector_id);
+    return -1;
+}
+
 /*****************************************************************************/
 /* SDL Video and Display initialization/handling functions                   */
-/* _this is a SDL_VideoDevice *                                              */
+/* _this is a SDL_VideoDevice*                                               */
 /*****************************************************************************/
 int
 KMSDRM_VideoInit(_THIS)
@@ -263,18 +347,13 @@ KMSDRM_VideoInit(_THIS)
     int i;
     int ret = 0;
     char *devname;
+    SDL_VideoDisplay display;
+    SDL_DisplayMode current_mode;
+    SDL_DisplayData *ddata = NULL;
+    drmModeModeInfo *cur_mode = NULL;
     SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
     drmModeRes *resources = NULL;
     drmModeConnector *connector = NULL;
-    drmModeEncoder *encoder = NULL;
-    SDL_DisplayMode current_mode;
-    SDL_VideoDisplay display;
-
-    /* Allocate display internal data */
-    SDL_DisplayData *data = (SDL_DisplayData *) SDL_calloc(1, sizeof(SDL_DisplayData));
-    if (data == NULL) {
-        return SDL_OutOfMemory();
-    }
 
     SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_VideoInit()");
 
@@ -296,7 +375,7 @@ KMSDRM_VideoInit(_THIS)
         goto cleanup;
     }
 
-    /* Find the first available connector with modes */
+    /* Find all connectors with modes */
     resources = KMSDRM_drmModeGetResources(vdata->drm_fd);
     if (!resources) {
         ret = SDL_SetError("drmModeGetResources(%d) failed", vdata->drm_fd);
@@ -305,78 +384,71 @@ KMSDRM_VideoInit(_THIS)
 
     for (i = 0; i < resources->count_connectors; i++) {
         connector = KMSDRM_drmModeGetConnector(vdata->drm_fd, resources->connectors[i]);
-        if (connector == NULL)
+        if (connector == NULL) {
+            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Can't retrieve DRM connector %u",
+                         resources->connectors[i]);
             continue;
+        }
 
         if (connector->connection == DRM_MODE_CONNECTED &&
             connector->count_modes > 0) {
-            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Found connector %d with %d modes.",
+            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Found DRM connector %d with %d modes.",
                          connector->connector_id, connector->count_modes);
-            vdata->saved_conn_id = connector->connector_id;
-            break;
+            ddata = SDL_calloc(1, sizeof(SDL_DisplayData));
+            cur_mode = SDL_malloc(sizeof(drmModeModeInfo));
+
+            if (ddata == NULL || cur_mode == NULL) {
+                ret = SDL_OutOfMemory();
+                goto cleanup;
+            }
+
+            ddata->connector_id = connector->connector_id;
+            ret = KMSDRM_FindCrtc(_this, resources, connector, ddata);
+            if (ret >= 0) {
+                ddata->saved_crtc = KMSDRM_drmModeGetCrtc(vdata->drm_fd, ddata->crtc_id);
+            }
+            if(ddata->saved_crtc == NULL) {
+                /* Couldn't find CRTC for this connector, give up */
+                SDL_free(ddata);
+                ddata = NULL;
+                KMSDRM_drmModeFreeConnector(connector);
+                connector = NULL;
+                continue;
+            }
+            *cur_mode = ddata->saved_crtc->mode;
+
+            SDL_zero(current_mode);
+            current_mode.w = cur_mode->hdisplay;
+            current_mode.h = cur_mode->vdisplay;
+            current_mode.refresh_rate = cur_mode->vrefresh;
+            current_mode.format = SDL_PIXELFORMAT_ARGB8888;
+            current_mode.driverdata = cur_mode;
+
+            SDL_zero(display);
+            display.desktop_mode = current_mode;
+            display.current_mode = current_mode;
+            display.driverdata = ddata;
+
+            ret = SDL_AddVideoDisplay(&display);
+            if (ret < 0) {
+                goto cleanup;
+            } else {
+                /* link display into list */
+                ddata->next = vdata->disp_list;
+                vdata->disp_list = ddata;
+                ddata = NULL;
+                cur_mode = NULL;
+            }
         }
 
         KMSDRM_drmModeFreeConnector(connector);
+        connector = NULL;
     }
 
-    if (i == resources->count_connectors) {
-        ret = SDL_SetError("No currently active connector found.");
+    if (vdata->disp_list == NULL) {
+        ret = SDL_SetError("No displays found.");
         goto cleanup;
     }
-
-    for (i = 0; i < resources->count_encoders; i++) {
-        encoder = KMSDRM_drmModeGetEncoder(vdata->drm_fd, resources->encoders[i]);
-
-        if (encoder == NULL)
-            continue;
-
-        if (encoder->encoder_id == connector->encoder_id) {
-            SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Found encoder %d.", encoder->encoder_id);
-            data->encoder_id = encoder->encoder_id;
-            break;
-        }
-
-        KMSDRM_drmModeFreeEncoder(encoder);
-    }
-
-    if (i == resources->count_encoders) {
-        ret = SDL_SetError("No connected encoder found.");
-        goto cleanup;
-    }
-
-    vdata->saved_crtc = KMSDRM_drmModeGetCrtc(vdata->drm_fd, encoder->crtc_id);
-    if (vdata->saved_crtc == NULL) {
-        ret = SDL_SetError("No CRTC found.");
-        goto cleanup;
-    }
-    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Saved crtc_id %u, fb_id %u, (%u,%u), %ux%u",
-                 vdata->saved_crtc->crtc_id, vdata->saved_crtc->buffer_id, vdata->saved_crtc->x,
-                 vdata->saved_crtc->y, vdata->saved_crtc->width, vdata->saved_crtc->height);
-    data->crtc_id = encoder->crtc_id;
-    data->cur_mode = vdata->saved_crtc->mode;
-
-    SDL_zero(current_mode);
-
-    current_mode.w = vdata->saved_crtc->mode.hdisplay;
-    current_mode.h = vdata->saved_crtc->mode.vdisplay;
-    current_mode.refresh_rate = vdata->saved_crtc->mode.vrefresh;
-
-    /* FIXME ?
-    drmModeFB *fb = drmModeGetFB(vdata->drm_fd, vdata->saved_crtc->buffer_id);
-    current_mode.format = drmToSDLPixelFormat(fb->bpp, fb->depth);
-    drmModeFreeFB(fb);
-    */
-    current_mode.format = SDL_PIXELFORMAT_ARGB8888;
-
-    current_mode.driverdata = NULL;
-
-    SDL_zero(display);
-    display.desktop_mode = current_mode;
-    display.current_mode = current_mode;
-
-    display.driverdata = data;
-    /* SDL_VideoQuit will later SDL_free(display.driverdata) */
-    SDL_AddVideoDisplay(&display);
 
     /* Setup page flip handler */
     vdata->drm_pollfd.fd = vdata->drm_fd;
@@ -391,8 +463,6 @@ KMSDRM_VideoInit(_THIS)
     KMSDRM_InitMouse(_this);
 
 cleanup:
-    if (encoder != NULL)
-        KMSDRM_drmModeFreeEncoder(encoder);
     if (connector != NULL)
         KMSDRM_drmModeFreeConnector(connector);
     if (resources != NULL)
@@ -400,10 +470,18 @@ cleanup:
 
     if (ret != 0) {
         /* Error (complete) cleanup */
-        SDL_free(data);
-        if(vdata->saved_crtc != NULL) {
-            KMSDRM_drmModeFreeCrtc(vdata->saved_crtc);
-            vdata->saved_crtc = NULL;
+        if (ddata != NULL) {
+            SDL_free(ddata);
+        }
+        if (cur_mode != NULL) {
+            SDL_free(cur_mode);
+        }
+        while (vdata->disp_list) {
+            ddata = vdata->disp_list;
+            vdata->disp_list = ddata->next;
+            KMSDRM_drmModeFreeCrtc(ddata->saved_crtc);
+            ddata->saved_crtc = NULL;
+            /* SDL_VideoQuit() will SDL_free(ddata) */
         }
         if (vdata->gbm != NULL) {
             KMSDRM_gbm_device_destroy(vdata->gbm);
@@ -421,6 +499,7 @@ void
 KMSDRM_VideoQuit(_THIS)
 {
     SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
+    SDL_DisplayData *ddata;
 
     SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_VideoQuit()");
 
@@ -428,18 +507,17 @@ KMSDRM_VideoQuit(_THIS)
         SDL_GL_UnloadLibrary();
     }
 
-    if(vdata->saved_crtc != NULL) {
-        if(vdata->drm_fd > 0 && vdata->saved_conn_id > 0) {
-            /* Restore saved CRTC settings */
-            drmModeCrtc *crtc = vdata->saved_crtc;
-            if(KMSDRM_drmModeSetCrtc(vdata->drm_fd, crtc->crtc_id, crtc->buffer_id,
-                                     crtc->x, crtc->y, &vdata->saved_conn_id, 1,
-                                     &crtc->mode) != 0) {
-                SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "Could not restore original CRTC mode");
-            }
+    while (vdata->disp_list) {
+        ddata = vdata->disp_list;
+        vdata->disp_list = ddata->next;
+        if(KMSDRM_drmModeSetCrtc(vdata->drm_fd, ddata->saved_crtc->crtc_id,
+                                 ddata->saved_crtc->buffer_id, ddata->saved_crtc->x, ddata->saved_crtc->y,
+                                 &ddata->connector_id, 1, &ddata->saved_crtc->mode) != 0) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "Could not restore original CRTC mode");
         }
-        KMSDRM_drmModeFreeCrtc(vdata->saved_crtc);
-        vdata->saved_crtc = NULL;
+        KMSDRM_drmModeFreeCrtc(ddata->saved_crtc);
+        ddata->saved_crtc = NULL;
+        /* SDL_VideoQuit() will SDL_free(ddata) */
     }
     if (vdata->gbm != NULL) {
         KMSDRM_gbm_device_destroy(vdata->gbm);
@@ -458,13 +536,63 @@ KMSDRM_VideoQuit(_THIS)
 void
 KMSDRM_GetDisplayModes(_THIS, SDL_VideoDisplay * display)
 {
-    /* Only one display mode available, the current one */
-    SDL_AddDisplayMode(display, &display->current_mode);
+    int i;
+    SDL_DisplayMode mode;
+    drmModeModeInfo *mdata;
+    SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
+    SDL_DisplayData *ddata = ((SDL_DisplayData *)display->driverdata);
+    drmModeConnector *connector = KMSDRM_drmModeGetConnector(vdata->drm_fd,
+                                                             ddata->connector_id);
+
+    if (connector == NULL) {
+        SDL_SetError("Could not get DRM connector %u", ddata->connector_id);
+        return;
+    }
+
+    for (i = 0; i < connector->count_modes; ++i) {
+        mdata = SDL_malloc(sizeof(drmModeModeInfo));
+
+        if (mdata == NULL) {
+            KMSDRM_drmModeFreeConnector(connector);
+            SDL_OutOfMemory();
+            return;
+        }
+
+        *mdata = connector->modes[i];
+
+        SDL_zero(mode);
+        mode.w = mdata->hdisplay;
+        mode.h = mdata->vdisplay;
+        mode.refresh_rate = mdata->vrefresh;
+        mode.format = SDL_PIXELFORMAT_ARGB8888;
+        mode.driverdata = mdata;
+        SDL_AddDisplayMode(display, &mode);
+    }
+
+    KMSDRM_drmModeFreeConnector(connector);
 }
 
 int
 KMSDRM_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
 {
+    int ret;
+    SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
+    SDL_DisplayData *ddata = ((SDL_DisplayData *)display->driverdata);
+    drmModeCrtc *crtc = KMSDRM_drmModeGetCrtc(vdata->drm_fd, ddata->crtc_id);
+    drmModeModeInfo *mdata = ((drmModeModeInfo *)mode->driverdata);
+
+    if (crtc == NULL) {
+        return SDL_SetError("Could not get DRM CRTC %u", ddata->crtc_id);
+    }
+
+    ret = KMSDRM_drmModeSetCrtc(vdata->drm_fd, crtc->crtc_id,
+                                crtc->buffer_id, crtc->x, crtc->y,
+                                &ddata->connector_id, 1, mdata);
+    KMSDRM_drmModeFreeCrtc(crtc);
+    if (ret != 0) {
+        return SDL_SetError("Failed to set display mode on DRM CRTC");
+    }
+    ddata->cur_mode = *mdata;
     return 0;
 }
 
@@ -474,7 +602,6 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
     SDL_WindowData *wdata;
     SDL_VideoDisplay *display;
     SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
-    SDL_DisplayData *displaydata;
 
     /* Allocate window internal data */
     wdata = (SDL_WindowData *) SDL_calloc(1, sizeof(SDL_WindowData));
@@ -484,7 +611,6 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
 
     wdata->waiting_for_flip = SDL_FALSE;
     display = SDL_GetDisplayForWindow(window);
-    displaydata = ((SDL_DisplayData *)display->driverdata);
 
     /* Windows have one size for now */
     window->w = display->desktop_mode.w;
