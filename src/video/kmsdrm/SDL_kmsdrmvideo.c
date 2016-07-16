@@ -433,6 +433,9 @@ KMSDRM_VideoInit(_THIS)
             if (ret < 0) {
                 goto cleanup;
             } else {
+                /* On success, the display index is returned - clear it */
+                ret = 0;
+
                 /* link display into list */
                 ddata->next = vdata->disp_list;
                 vdata->disp_list = ddata;
@@ -585,6 +588,9 @@ KMSDRM_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
         return SDL_SetError("Could not get DRM CRTC %u", ddata->crtc_id);
     }
 
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Setting mode on CRTC %u to %s",
+                 ddata->crtc_id, mdata->name);
+
     ret = KMSDRM_drmModeSetCrtc(vdata->drm_fd, crtc->crtc_id,
                                 crtc->buffer_id, crtc->x, crtc->y,
                                 &ddata->connector_id, 1, mdata);
@@ -601,7 +607,11 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
 {
     SDL_WindowData *wdata;
     SDL_VideoDisplay *display;
+    SDL_DisplayData *ddata;
+    SDL_DisplayMode mode;
     SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
+
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_CreateWindow(%p)", window);
 
     /* Allocate window internal data */
     wdata = (SDL_WindowData *) SDL_calloc(1, sizeof(SDL_WindowData));
@@ -611,16 +621,35 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
 
     wdata->waiting_for_flip = SDL_FALSE;
     display = SDL_GetDisplayForWindow(window);
+    ddata = ((SDL_DisplayData *)display->driverdata);
 
-    /* Windows have one size for now */
-    window->w = display->desktop_mode.w;
-    window->h = display->desktop_mode.h;
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Window on connector %u, CRTC %u", ddata->connector_id, ddata->crtc_id);
 
-    /* Maybe you didn't ask for a fullscreen OpenGL window, but that's what you get */
-    window->flags |= (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_OPENGL);
+    /* Force windows to be fullscreen sized */
+    window->x = 0;
+    window->y = 0;
+    window->windowed.x = window->x;
+    window->windowed.y = window->y;
+    if ((window->flags & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP) {
+        /* Desktop fullscreen - same dimensions as default mode */
+        window->w = display->desktop_mode.w;
+        window->h = display->desktop_mode.h;
+    } else {
+        /* Regular fullscreen - mode will be set later by SDL_UpdateFullscreenMode */
+        if (!SDL_GetWindowDisplayMode(window, &mode)) {
+            SDL_SetError("Couldn't find display mode match");
+            goto error;
+        }
+        window->w = mode.w;
+        window->h = mode.h;
+        window->flags |= SDL_WINDOW_FULLSCREEN;
+    }
+    window->windowed.w = window->w;
+    window->windowed.h = window->h;
 
     wdata->gs = KMSDRM_gbm_surface_create(vdata->gbm, window->w, window->h, GBM_BO_FORMAT_XRGB8888,
                                           GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Window GBM surface: %p", wdata->gs);
 
 #if SDL_VIDEO_OPENGL_EGL
     if (!_this->egl_data) {
@@ -634,6 +663,7 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
         SDL_SetError("Could not create EGL window surface");
         goto error;
     }
+    window->flags |= SDL_WINDOW_OPENGL;
 #endif /* SDL_VIDEO_OPENGL_EGL */
 
     /* Setup driver data for this window */
@@ -644,6 +674,7 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
     SDL_SetKeyboardFocus(window);
 
     /* Window has been successfully created */
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "Window created successfully");
     return 0;
 
 error:
