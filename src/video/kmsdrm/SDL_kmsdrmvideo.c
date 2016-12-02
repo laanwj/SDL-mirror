@@ -636,7 +636,7 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
         window->h = display->desktop_mode.h;
     } else {
         /* Regular fullscreen - mode will be set later by SDL_UpdateFullscreenMode */
-        if (!SDL_GetWindowDisplayMode(window, &mode)) {
+        if (SDL_GetWindowDisplayMode(window, &mode)) {
             SDL_SetError("Couldn't find display mode match");
             goto error;
         }
