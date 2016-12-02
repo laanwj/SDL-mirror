@@ -44,7 +44,9 @@ static _THIS = NULL;
 #include <linux/kd.h>
 #include <linux/keyboard.h>
 #endif
-
+#ifndef SDL_USE_LIBUDEV
+#include <dirent.h>             /* To list devices under /dev/input */
+#endif
 
 /* We need this to prevent keystrokes from appear in the console */
 #ifndef KDSKBMUTE
@@ -71,10 +73,10 @@ static _THIS = NULL;
 
 static SDL_Scancode SDL_EVDEV_translate_keycode(int keycode);
 static void SDL_EVDEV_sync_device(SDL_evdevlist_item *item);
+static int SDL_EVDEV_device_added(const char *devpath);
 static int SDL_EVDEV_device_removed(const char *devpath);
 
 #if SDL_USE_LIBUDEV
-static int SDL_EVDEV_device_added(const char *devpath);
 void SDL_EVDEV_udev_callback(SDL_UDEV_deviceevent udev_type, int udev_class, const char *devpath);
 #endif /* SDL_USE_LIBUDEV */
 
@@ -448,6 +450,33 @@ static int SDL_EVDEV_get_active_tty()
     return fd;  
 }
 
+#ifndef SDL_USE_LIBUDEV
+/* Caveman evdev device scan - no hotplug, no selectivity, just open what we
+ * can under /dev/input */
+static int
+SDL_EVDEV_scan(void)
+{
+	char event_name[PATH_MAX+1];
+	struct dirent entry;
+	struct dirent *result;
+	DIR* dirp = opendir("/dev/input");
+	if (dirp == NULL) {
+		return SDL_SetError("Could not open /dev/input directory");
+	}
+
+	while (!readdir_r(dirp, &entry, &result) && result != NULL) {
+		if (strncmp(result->d_name, "event", 5) ==  0) {
+			if (snprintf(event_name, sizeof(event_name), "/dev/input/%s", result->d_name) >= sizeof(event_name)) {
+                continue;
+			}
+            SDL_EVDEV_device_added(event_name);
+		}
+	}
+
+	closedir(dirp);
+}
+#endif
+
 int
 SDL_EVDEV_Init(void)
 {
@@ -477,6 +506,7 @@ SDL_EVDEV_Init(void)
         SDL_UDEV_Scan();
 #else
         /* TODO: Scan the devices manually, like a caveman */
+        SDL_EVDEV_scan();
 #endif /* SDL_USE_LIBUDEV */
         
         /* We need a physical terminal (not PTS) to be able to translate key code to symbols via the kernel tables */
@@ -497,7 +527,6 @@ SDL_EVDEV_Init(void)
     }
     
     _this->ref_count += 1;
-    
     return retval;
 }
 
@@ -724,7 +753,6 @@ SDL_EVDEV_sync_device(SDL_evdevlist_item *item)
     /* TODO: get full state of device and report whatever is required */
 }
 
-#if SDL_USE_LIBUDEV
 static int
 SDL_EVDEV_device_added(const char *devpath)
 {
@@ -769,7 +797,6 @@ SDL_EVDEV_device_added(const char *devpath)
     
     return _this->numdevices++;
 }
-#endif /* SDL_USE_LIBUDEV */
 
 static int
 SDL_EVDEV_device_removed(const char *devpath)
