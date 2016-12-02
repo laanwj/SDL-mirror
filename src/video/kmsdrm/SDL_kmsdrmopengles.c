@@ -125,6 +125,12 @@ KMSDRM_GLES_SwapWindow(_THIS, SDL_Window * window) {
 
 SDL_EGL_MakeCurrent_impl(KMSDRM)
 
+#else
+
+#if SDL_VIDEO_DRIVER_KMSDRM
+#error The KMSDRM driver is not currently usable without EGL
+#endif
+
 #endif /* SDL_VIDEO_DRIVER_KMSDRM && SDL_VIDEO_OPENGL_EGL */
 
 /* vi: set ts=4 sw=4 expandtab: */
