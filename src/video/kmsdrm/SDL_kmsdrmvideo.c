@@ -48,7 +48,7 @@
 #include "SDL_kmsdrmmouse.h"
 #include "SDL_kmsdrmdyn.h"
 
-#define KMSDRM_DRI_CARD_0 "/dev/dri/card0"
+#define KMSDRM_DRI_CARD_0 "/dev/dri/card1"
 
 static int
 KMSDRM_Available(void)
