@@ -608,7 +608,6 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
     SDL_WindowData *wdata;
     SDL_VideoDisplay *display;
     SDL_DisplayData *ddata;
-    SDL_DisplayMode mode;
     SDL_VideoData *vdata = ((SDL_VideoData *)_this->driverdata);
 
     SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "KMSDRM_CreateWindow(%p)", window);
@@ -630,22 +629,7 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
     window->y = 0;
     window->windowed.x = window->x;
     window->windowed.y = window->y;
-    if ((window->flags & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP) {
-        /* Desktop fullscreen - same dimensions as default mode */
-        window->w = display->desktop_mode.w;
-        window->h = display->desktop_mode.h;
-    } else {
-        /* Regular fullscreen - mode will be set later by SDL_UpdateFullscreenMode */
-        if (SDL_GetWindowDisplayMode(window, &mode)) {
-            SDL_SetError("Couldn't find display mode match");
-            goto error;
-        }
-        window->w = mode.w;
-        window->h = mode.h;
-        window->flags |= SDL_WINDOW_FULLSCREEN;
-    }
-    window->windowed.w = window->w;
-    window->windowed.h = window->h;
+
     if (display->desktop_mode.driverdata)
         ddata->cur_mode = *((drmModeModeInfo*)display->desktop_mode.driverdata);
 
