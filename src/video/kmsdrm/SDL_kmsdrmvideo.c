@@ -646,6 +646,8 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
     }
     window->windowed.w = window->w;
     window->windowed.h = window->h;
+    if (display->desktop_mode.driverdata)
+        ddata->cur_mode = *((drmModeModeInfo*)display->desktop_mode.driverdata);
 
     wdata->gs = KMSDRM_gbm_surface_create(vdata->gbm, window->w, window->h, GBM_BO_FORMAT_XRGB8888,
                                           GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
