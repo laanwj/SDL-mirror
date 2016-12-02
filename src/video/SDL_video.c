@@ -450,6 +450,7 @@ SDL_VideoInit(const char *driver_name)
     int index;
     int i;
     SDL_bool allow_screensaver;
+    const char *value;
 
     /* Check to make sure we don't overwrite '_this' */
     if (_this != NULL) {
@@ -470,6 +471,10 @@ SDL_VideoInit(const char *driver_name)
 
     /* Select the proper video driver */
     index = 0;
+    value = SDL_getenv("SDL_VIDEOINDEX");
+    if (value) {
+        index = atoi(value);
+    }
     video = NULL;
     if (driver_name == NULL) {
         driver_name = SDL_getenv("SDL_VIDEODRIVER");
