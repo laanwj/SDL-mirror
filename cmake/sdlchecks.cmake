@@ -686,6 +686,7 @@ endmacro()
 # Requires:
 # - nada
 macro(CheckOpenGLESX11)
+  set(SDL_VIDEO_OPENGL 1)  # HACK
   if(VIDEO_OPENGLES)
     check_c_source_compiles("
         #define EGL_API_FB
