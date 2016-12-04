@@ -627,6 +627,8 @@ KMSDRM_CreateWindow(_THIS, SDL_Window * window)
     /* Force windows to be fullscreen sized */
     window->x = 0;
     window->y = 0;
+    window->w = display->desktop_mode.w;
+    window->h = display->desktop_mode.h;
     window->windowed.x = window->x;
     window->windowed.y = window->y;
 
