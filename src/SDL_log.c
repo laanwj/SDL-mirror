@@ -278,12 +278,12 @@ SDL_LogMessageV(int category, SDL_LogPriority priority, const char *fmt, va_list
     if ((int)priority < 0 || priority >= SDL_NUM_LOG_PRIORITIES) {
         return;
     }
-
+#if 0
     /* See if we want to do anything with this message */
     if (priority < SDL_LogGetPriority(category)) {
         return;
     }
-
+#endif
     message = SDL_stack_alloc(char, SDL_MAX_LOG_MESSAGE);
     if (!message) {
         return;
