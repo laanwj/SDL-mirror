@@ -379,7 +379,7 @@ KMSDRM_WarpMouseGlobal(int x, int y)
 
                 return ret;
             } else {
-                return SDL_SetError("Cursor is not currently shown.");
+                return 0;
             }
         } else {
             return SDL_SetError("Cursor not initialized properly.");
