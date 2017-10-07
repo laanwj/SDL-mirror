@@ -277,10 +277,12 @@ SDL_LogMessageV(int category, SDL_LogPriority priority, const char *fmt, va_list
         return;
     }
 
+#if 0
     /* See if we want to do anything with this message */
     if (priority < SDL_LogGetPriority(category)) {
         return;
     }
+#endif
 
     message = SDL_stack_alloc(char, SDL_MAX_LOG_MESSAGE);
     if (!message) {
