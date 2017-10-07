@@ -1163,6 +1163,7 @@ int main(int argc, char *argv[])
 
     SDL_GetCurrentDisplayMode(0, &mode);
     SDL_Log("Screen BPP    : %d\n", SDL_BITSPERPIXEL(mode.format));
+    SDL_Log("Screen Size   : %d,%d\n", mode.w, mode.h);
     SDL_GetWindowSize(state->windows[0], &dw, &dh);
     SDL_Log("Window Size   : %d,%d\n", dw, dh);
     SDL_Vulkan_GetDrawableSize(state->windows[0], &dw, &dh);
